@@ -1,89 +1,165 @@
+// src/App.js
+
 import { useState } from "react";
+import "./App.css";
+
+const EXAMPLES = [
+  "Explain recursion like I'm 10 years old",
+  "Write a haiku about machine learning",
+  "What are 3 use cases for AI agents?",
+];
+
+const BACKEND_URL = "https://prompt-tester-backend.onrender.com/api/generate";
 
 function App() {
   const [prompt, setPrompt] = useState("");
-  const [result, setResult] = useState("");
+  const [temperature, setTemperature] = useState(0.7);
+  const [response, setResponse] = useState("");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [usage, setUsage] = useState(null);
 
-  const testPrompt = async () => {
-    if (!prompt.trim()) {
-      alert("Please enter a prompt");
-      return;
-    }
+  async function callLLM() {
+    if (!prompt.trim()) return;
+
+    setLoading(true);
+    setResponse("");
+    setError("");
+    setUsage(null);
 
     try {
-      setLoading(true);
+      const res = await fetch(BACKEND_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          prompt,
+          temperature,
+        }),
+      });
 
-      const response = await fetch(
-        "http://localhost:5000/api/generate",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            prompt: prompt,
-          }),
-        }
-      );
+      const data = await res.json();
 
-      const data = await response.json();
-
-      if (data.text) {
-        setResult(data.text);
+      if (!res.ok) {
+        setError(data.error || "Something went wrong");
       } else {
-        setResult(data.error || "No response received");
+        setResponse(data.text);
+        setUsage(data.usage);
       }
-    } catch (error) {
-      console.error(error);
-      setResult("Error connecting to backend");
+    } catch (err) {
+      setError("Network error: " + err.message);
     } finally {
       setLoading(false);
     }
-  };
+  }
+
+  function handleKeyDown(e) {
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+      callLLM();
+    }
+  }
+
+  const tempLabel =
+    temperature < 0.3
+      ? "Precise"
+      : temperature < 0.6
+      ? "Balanced"
+      : temperature < 0.85
+      ? "Creative"
+      : "Wild";
 
   return (
-    <div
-      style={{
-        textAlign: "center",
-        marginTop: "80px",
-        padding: "20px",
-      }}
-    >
-      <h1>AI Prompt Tester</h1>
+    <div className="app">
+      <header className="header">
+        <span className="badge">Gen AI Lab — Mini Project</span>
 
-      <textarea
-        rows="8"
-        cols="60"
-        placeholder="Enter your prompt here..."
-        value={prompt}
-        onChange={(e) => setPrompt(e.target.value)}
-      />
+        <h1>Prompt Tester</h1>
 
-      <br />
-      <br />
+        <p>Type a prompt → call Gemini → see the response</p>
+      </header>
 
-      <button onClick={testPrompt}>
-        {loading ? "Generating..." : "Test Prompt"}
-      </button>
+      <div className="card">
+        <div className="examples">
+          <div className="label">Try an example</div>
 
-      <br />
-      <br />
+          <div className="chip-row">
+            {EXAMPLES.map((ex) => (
+              <button
+                key={ex}
+                className="chip"
+                onClick={() => setPrompt(ex)}
+              >
+                {ex}
+              </button>
+            ))}
+          </div>
+        </div>
 
-      <div
-        style={{
-          width: "70%",
-          margin: "auto",
-          textAlign: "left",
-          whiteSpace: "pre-wrap",
-          border: "1px solid gray",
-          padding: "15px",
-          borderRadius: "10px",
-        }}
-      >
-        <h3>Response:</h3>
-        {result}
+        <label className="label" htmlFor="prompt-input">
+          Your Prompt
+        </label>
+
+        <textarea
+          id="prompt-input"
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="Ask anything... (Ctrl+Enter to send)"
+          rows={4}
+        />
+
+        <div className="temp-row">
+          <label className="label">Temperature</label>
+
+          <span className="temp-value">
+            {temperature.toFixed(1)} - {tempLabel}
+          </span>
+        </div>
+
+        <input
+          type="range"
+          min="0"
+          max="1"
+          step="0.1"
+          value={temperature}
+          onChange={(e) =>
+            setTemperature(parseFloat(e.target.value))
+          }
+        />
+
+        <div className="temp-scale">
+          <span>0 – Deterministic</span>
+          <span>1 – Max Randomness</span>
+        </div>
+
+        <button
+          className="send-btn"
+          onClick={callLLM}
+          disabled={loading || !prompt.trim()}
+        >
+          {loading ? "Calling API..." : "Send Prompt ↵"}
+        </button>
       </div>
+
+      {(response || error) && (
+        <div className={`result-card ${error ? "error" : ""}`}>
+          <div className="result-header">
+            <span>{error ? "⚠ Error" : "✓ Response"}</span>
+
+            {usage && (
+              <span className="tokens">
+                {usage.promptTokens} in •{" "}
+                {usage.responseTokens} out tokens
+              </span>
+            )}
+          </div>
+
+          <div className="result-body">
+            {error || response}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
